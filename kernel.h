@@ -133,7 +133,7 @@ class Kernel {
             * @return The kernel value at the given position.
         */
         float& operator()(const int col, const int row) const;
-
+        
         /*
             * Print the kernel.
         */

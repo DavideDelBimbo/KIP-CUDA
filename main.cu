@@ -8,38 +8,36 @@
 
 
 int main() {
-    Image image("images/4K_grey.jpg", 1, true);    
-    Kernel kernel = Kernel::edge_detection_kernel();
+    Image image("images/4K.jpg", 0, false);
+    Kernel kernel = Kernel::unsharpen_mask_kernel();
 
     std::cout << kernel << std::endl;
 
-    /*auto t1 = std::chrono::high_resolution_clock::now();
-    Image s = Sequential::Convolution::convolve(image, kernel, PaddingType::MIRROR);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    printf("Convolution sequential: %lld ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count());
+    /*Image s = Sequential::Convolution::convolve(image, kernel, PaddingType::MIRROR);
 
-    //s.save_image("images/sequential.png");*/
-
-    /*auto t1 = std::chrono::high_resolution_clock::now();
+    s.save_image("images/sequential.png");*/
+    
+    
     Image a = Parallel::Convolution::convolve_global(image, kernel, PaddingType::MIRROR);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    printf("Convolution global: %lld ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count());
 
-    //a.save_image("images/global.png");*/
+    //a.save_image("images/global.png");
 
-    auto t1 = std::chrono::high_resolution_clock::now();
+    
     Image b = Parallel::Convolution::convolve_constant(image, kernel, PaddingType::MIRROR);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    printf("Convolution constant: %lld ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count());
-
+   
     //b.save_image("images/constant.png");
-
-    /*auto t1 = std::chrono::high_resolution_clock::now();
+    
+    
     Image c = Parallel::Convolution::convolve_shared(image, kernel, PaddingType::MIRROR);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    printf("Convolution shared: %lld ms\n", std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count());*/
 
     //c.save_image("images/shared.png");
+
+    std::cout << (c == a) << std::endl;
+
+
+    Image d = Parallel::Convolution::convolve_pinned(image, kernel, PaddingType::MIRROR);
+
+    //d.save_image("images/pinned.png");
 
     return 0;
 }

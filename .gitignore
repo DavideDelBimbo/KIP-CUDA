@@ -52,3 +52,5 @@ include/
 
 # Files
 *.txt
+*.ncu-rep
+main.cpp

@@ -1,3 +1,6 @@
+#include <sstream>
+#include <iomanip>
+
 #include "image.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
@@ -159,38 +162,38 @@ Image Image::padding(const int padding_width, const int padding_height, const Pa
 
     // Iterate over the input image.
     for (int channel = 0; channel < channels; channel++) {
-        for (int row = 0; row < padded_height; row++) {
-            for (int col = 0; col < padded_width; col++) {
+        for (int y = 0; y < padded_height; y++) {
+            for (int x = 0; x < padded_width; x++) {
                 // Get the pixel index to be padded.
-                const int x = col - padding_width; // Column index.
-                const int y = row - padding_height; // Row index.
+                const int col = x - padding_width; // Column index.
+                const int row = y - padding_height; // Row index.
                 
                 // Verify if the pixel index is valid.
-                if (x >= 0 && x < width && y >= 0 && y < height) {
+                if (col >= 0 && col < width && row >= 0 && row < height) {
                     // Set the padded pixel to the input pixel.
-                    padded_image(col, row, channel) = (*this)(x, y, channel);
+                    padded_image(x, y, channel) = (*this)(col, row, channel);
                 } else {
                     if (padding_type == PaddingType::ZERO) {
                         // Set the padded pixel to zero.
-                        padded_image(col, row, channel) = 0;
+                        padded_image(x, y, channel) = 0;
                     } else if (padding_type == PaddingType::REPLICATE) {
                         // Get the nearest valid pixel.
-                        const int valid_col = clamp(0, x, width - 1); // Column index of the nearest valid pixel.
-                        const int valid_row = clamp(0, y, height - 1); // Row index of the nearest valid pixel.
+                        const int valid_col = clamp(0, col, width - 1); // Column index of the nearest valid pixel.
+                        const int valid_row = clamp(0, row, height - 1); // Row index of the nearest valid pixel.
 
                         // Set the padded pixel to the nearest valid pixel.
-                        padded_image(col, row, channel) = (*this)(valid_col, valid_row, channel);
+                        padded_image(x, y, channel) = (*this)(valid_col, valid_row, channel);
                     } else if (padding_type == PaddingType::MIRROR) {
                         // Get the mirrored pixel.
-                        int mirror_col = std::abs(x % (2 * width)); // Column index of the mirrored pixel.
-                        int mirror_row = std::abs(y % (2 * height)); // Row index of the mirrored pixel.
+                        int mirror_col = std::abs(col % (2 * width)); // Column index of the mirrored pixel.
+                        int mirror_row = std::abs(row % (2 * height)); // Row index of the mirrored pixel.
 
                         // Ensure that the mirrored pixel is in the valid range.
                         mirror_col = std::min(mirror_col, ((2 * width) - 1) - (mirror_col + 1));
                         mirror_row = std::min(mirror_row, ((2 * height) - 1) - (mirror_row + 1));
 
                         // Set the padded pixel to the mirrored pixel.
-                        padded_image(col, row, channel) = (*this)(mirror_col, mirror_row, channel);
+                        padded_image(x, y, channel) = (*this)(mirror_col, mirror_row, channel);
                     }
                 }
             }
@@ -226,6 +229,53 @@ uint8_t &Image::operator()(const int col, const int row, const int channel) cons
     const int pixel_index = is_SoA ? ((channel * width * height) + (row * width) + col) : ((row * width + col) * channels + channel);
 
     return data[pixel_index];
+}
+
+bool Image::operator==(const Image &other) const {
+    // Check if the images have the same dimensions.
+    if (width != other.width || height != other.height || channels != other.channels) {
+        return false;
+    }
+
+    // Get the size of the image.
+    size_t size = get_size();
+
+    // Compare the image data.
+    return memcmp(data, other.data, size * sizeof(uint8_t)) == 0;
+}
+
+std::ostream &operator<<(std::ostream &os, const Image &image) {
+    // Calculate the maximum element width.
+    std::string str;
+    int maxElementWidth = 1;
+    for (int i = 0; i < image.get_size(); i++) {
+        // Get the string representation of the element.
+        str = std::to_string(image.get_data()[i]);
+
+        // Update the maximum element width.
+        maxElementWidth = std::max(maxElementWidth, (int)str.size());
+    }
+
+    // Print the image data.
+    os << "Image data: " << std::endl;
+    for (int row = 0; row < image.get_height(); row++) {
+        for (int col = 0; col < image.get_width(); col++) {
+            os << "(";
+            for (int channel = 0; channel < image.get_channels(); channel++) {
+                os << std::setw(maxElementWidth) << (int)image(col, row, channel);
+                if (channel < image.get_channels() - 1) {
+                    os << ", ";
+                }
+            }
+            os << ") ";
+        }
+        os << std::endl;
+    }
+
+    // Restore the output format
+    os << std::defaultfloat;
+
+    return os;
 }
 
 

@@ -179,7 +179,21 @@ class Image {
         */
         uint8_t& operator()(const int col, const int row, const int channel) const;
 
+        /*
+            * Compare two images.
+            *
+            * @param other The image to be compared.
+            * 
+            * @return True if the images are equal, false otherwise.
+        */
+        bool operator==(const Image& other) const;
 
+        /*
+            * Print the image.
+        */
+        friend std::ostream& operator<<(std::ostream& os, const Image& image);
+
+        
     private:
         // Attributes.
 
