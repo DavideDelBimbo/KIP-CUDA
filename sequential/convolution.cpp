@@ -1,15 +1,17 @@
 #include <iostream>
 #include <chrono>
+#include <string>
 
 #include "convolution.h"
 #include "../params.h"
+#include "../utils.h"
 
 #define clamp(start, x, end) std::min(std::max(start, x), end)
 
 
 // Methods.
 
-Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel, PaddingType padding_type) {
+Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel, PaddingType padding_type, std::string results_path) {
     // Get the input image dimensions.
     const int width = image.get_width(); // Image width.
     const int height = image.get_height(); // Image height.
@@ -51,11 +53,18 @@ Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel
         execution_time += iteration_execution_time;
 
         // Print the iteration execution time.
-        if (VERBOSITY >= 2) std::cout << " - Executed in " << iteration_execution_time << " ms" << std::endl;
+        if (VERBOSITY >= 2) std::cout << " - Execution: " << iteration_execution_time << " ms" << std::endl;
     }
 
     // Print the execution time.
-    if (VERBOSITY >= 1) std::cout << "Sequential execution time: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
+    if (VERBOSITY >= 1) std::cout << "Execution time: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
+
+
+    // Save the results.
+    if (!results_path.empty()) {
+        std::string execution_type = "sequential";
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, 0, execution_time / ITERATIONS, execution_time / ITERATIONS, ITERATIONS);
+    }
 
 
     // Return the convolved image.

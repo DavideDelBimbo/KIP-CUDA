@@ -91,7 +91,7 @@ class Kernel {
             *
             * @return The sharpen kernel.
         */
-        static Kernel sharpness_kernel();
+        static Kernel sharpen_kernel();
 
         /*
             * Create a unsharpen mask kernel.
@@ -147,12 +147,6 @@ class Kernel {
         int width = 0, height = 0;
         // Kernel data.
         float *data = NULL;
-
-
-        // Methods.
-
-        // Normalize the kernel.
-        void normalize();
 };
 
 #endif // KERNEL_H

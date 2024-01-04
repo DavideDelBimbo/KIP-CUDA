@@ -1,5 +1,6 @@
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 
 #include "image.h"
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,9 +16,10 @@
 Image::Image(const char *filename, const int channel_force, const bool is_SoA) : is_SoA(is_SoA) {
     // Load the image.
     if (!load_image(filename, channel_force)) {
+        std::cerr << "Error: Failed to read " << filename << "." << std::endl;
         throw std::runtime_error("Failed to read " + std::string(filename) + ".");
     } else {
-        printf("Read %s:\n\tWidth: %dpx\n\tHeight: %dpx\n\tChannels: %d\n\n", filename, width, height, channels);
+        printf("Read %s:\n\tWidth: %dpx\n\tHeight: %dpx\n\tChannels: %d\n\tArchitecture: %s\n\n", filename, width, height, channels, is_SoA ? "SoA" : "AoS");
     }
 }
 
@@ -143,13 +145,18 @@ void Image::save_image(const char* filename) {
         stbi_write_bmp(filename, width, height, channels, data);
     else if (type == ImageType::TGA)
         stbi_write_tga(filename, width, height, channels, data);
-    else
-        printf("Failed to save %s\n", filename);
+    else {
+        std::cerr << "Error: Failed to save " << filename << "." << std::endl;
+        throw std::runtime_error("Failed to save " + std::string(filename) + ".");
+    }
+
+    std::cout << "Saving " << filename << "..." << std::endl;
 }
 
 Image Image::padding(const int padding_width, const int padding_height, const PaddingType padding_type) const {
     // Check if the padding dimensions are valid.
     if (padding_width < 0 || padding_height < 0) {
+        std::cerr << "Error: Invalid padding dimensions: (" << padding_width << ", " << padding_height << ")." << std::endl;
         throw std::invalid_argument("Invalid padding dimensions.");
     }
     
@@ -222,6 +229,7 @@ Image &Image::operator=(const Image &other) {
 uint8_t &Image::operator()(const int col, const int row, const int channel) const {
     // Check if the coordinates are valid.
     if ((col < 0 || col >= width) || (row < 0 || row >= height) || (channel < 0 || channel >= channels)) {
+        std::cerr << "Error: Invalid coordinates: (" << col << ", " << row << ", " << channel << ")." << std::endl;
         throw std::invalid_argument("Invalid coordinates.");
     }
 

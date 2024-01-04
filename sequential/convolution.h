@@ -16,10 +16,11 @@ namespace Sequential {
                 * @param image The image to be convolved.
                 * @param kernel The kernel to be applied.
                 * @param padding_type The padding type to be applied.
+                * @param results_path The path to save the results.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve(const Image& image, const Kernel& kernel, PaddingType padding_type = ZERO);
+            static Image convolve(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
 
 
         private:

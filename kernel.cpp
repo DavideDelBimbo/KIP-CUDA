@@ -1,21 +1,26 @@
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 
 #include "kernel.h"
 
 
 // Constructor and destructor.
 
-Kernel::Kernel(const int width, const int height) : width(width), height(height) {
+Kernel::Kernel(const int width, const int height) : width(width), height(height)
+{
     if (width <= 0 || height <= 0) {
+        std::cerr << "Error: Kernel dimensions must be greater than 0." << std::endl;
         throw std::invalid_argument("Kernel dimensions must be greater than 0.");
     }
 
     if (width % 2 == 0 || height % 2 == 0) {
+        std::cerr << "Error: Kernel dimensions must be odd." << std::endl;
         throw std::invalid_argument("Kernel dimensions must be odd.");
     }
 
     if (width != height) {
+        std::cerr << "Error: Kernel dimensions must be equal." << std::endl;
         throw std::invalid_argument("Kernel dimensions must be equal.");
     }
 
@@ -91,7 +96,7 @@ Kernel Kernel::edge_detection_kernel() {
     return Kernel(3, 3, data);
 }
 
-Kernel Kernel::sharpness_kernel() {
+Kernel Kernel::sharpen_kernel() {
     float data[9] = {
         0, -1, 0,
         -1, 5, -1,
@@ -127,15 +132,20 @@ Kernel Kernel::emboss_kernel() {
 // Custom kernel.
 
 Kernel Kernel::custom_kernel(const int size, float* data, const bool normalize) {
-    // Create the kernel.
-    Kernel kernel(size, size, data);
-
     // Normalize the kernel.
     if (normalize) {
-        kernel.normalize();
+        // Normalize the data array.
+        float sum = 0.0;
+        for (int i = 0; i < size * size; i++) {
+            sum += data[i];
+        }
+
+        for (int i = 0; i < size * size; i++) {
+            data[i] /= sum;
+        }
     }
 
-    return kernel;
+    return Kernel(size, size, data);
 }
 
 
@@ -144,6 +154,7 @@ Kernel Kernel::custom_kernel(const int size, float* data, const bool normalize) 
 float &Kernel::operator()(const int col, const int row) const {
     // Check if the coordinates are valid.
     if ((col < 0 || col >= width) || (row < 0 || row >= height)) {
+        std::cerr << "Error: Invalid kernel coordinates (" << col << ", " << row << ")." << std::endl;
         throw std::invalid_argument("Invalid kernel coordinates.");
     }
 
@@ -187,25 +198,4 @@ std::ostream &operator<<(std::ostream &os, const Kernel &kernel) {
     os << std::defaultfloat;
 
     return os;
-}
-
-
-// Private methods.
-
-void Kernel::normalize() {
-    // Calculate the size of the kernel.
-    size_t size = get_size();
-
-    // Calculate the sum of the kernel.
-    float sum = 0.0f;
-    for (int i = 0; i < size; i++) {
-        sum += data[i];
-    }
-
-    // Normalize the kernel.
-    if (sum != 0.0f) {
-        for (int i = 0; i < size; i++) {
-            data[i] /= sum;
-        }
-    }
 }

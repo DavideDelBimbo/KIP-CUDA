@@ -14,10 +14,11 @@ namespace Parallel {
                 * @param image The image to be convolved.
                 * @param kernel The kernel to be applied.
                 * @param padding_type The type of padding to be applied.
+                * @param results_path The path to save the results.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_global(const Image& image, const Kernel& kernel, PaddingType padding_type = ZERO);
+            static Image convolve_global(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
     
             /*
                 * Applies convolution to an image using a kernel in constant memory.
@@ -25,10 +26,11 @@ namespace Parallel {
                 * @param image The image to be convolved.
                 * @param kernel The kernel to be applied.
                 * @param padding_type The type of padding to be applied.
+                * @param results_path The path to save the results.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_constant(const Image& image, const Kernel& kernel, PaddingType padding_type = ZERO);
+            static Image convolve_constant(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
     
             /*
                 * Applies convolution to an image using a kernel in shared memory.
@@ -36,10 +38,11 @@ namespace Parallel {
                 * @param image The image to be convolved.
                 * @param kernel The kernel to be applied.
                 * @param padding_type The type of padding to be applied.
+                * @param results_path The path to save the results.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_shared(const Image& image, const Kernel& kernel, PaddingType padding_type = ZERO);
+            static Image convolve_shared(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
 
             /*
                 * Applies convolution to an image using a kernel in shared memory and pinned memory.
@@ -47,10 +50,11 @@ namespace Parallel {
                 * @param image The image to be convolved.
                 * @param kernel The kernel to be applied.
                 * @param padding_type The type of padding to be applied.
+                * @param results_path The path to save the results.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_pinned(const Image& image, const Kernel& kernel, PaddingType padding_type = ZERO);
+            static Image convolve_pinned(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
     };
 }
 

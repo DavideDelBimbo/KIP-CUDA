@@ -142,7 +142,6 @@ class Image {
             * Save an image to a filename path.
             *
             * @param filename The path of the image to be saved.
-            * @param AoS Whether to save the image in AoS or SoA architecture.
         */
         void save_image(const char* filename);
 

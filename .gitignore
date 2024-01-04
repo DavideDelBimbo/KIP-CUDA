@@ -49,6 +49,8 @@ lib/
 build/
 images/
 include/
+results/
+visualization/
 
 # Files
 *.txt
