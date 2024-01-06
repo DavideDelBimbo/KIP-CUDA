@@ -57,14 +57,14 @@ Before diving into the results, you may want to take a moment to configure the p
 
 <p float="left" align="center">
     <p float="left" align="center">
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/original.png" alt="Original image" width="300" />
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/box_blur.png" alt="Box blur image" width="300" />
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/gaussian_blur.png" alt="Gaussian blur image" width="300" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/original.png" alt="Original image" width="200" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/box_blur.png" alt="Box blur image" width="200" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/gaussian_blur.png" alt="Gaussian blur image" width="200" />
     </p>
     <p float="left" align="center">
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/edge_detection.png" alt="Edge detection image" width="300" />
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/sharpen.png" alt="Sharpen image" width="300" />
-        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/unsharp_mask.png" alt="Unsharp mask image" width="300" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/edge_detection.png" alt="Edge detection image" width="200" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/sharpen.png" alt="Sharpen image" width="200" />
+        <img src="https://github.com/DavideDelBimbo/KIP-CUDA/blob/main/report/unsharp_mask.png" alt="Unsharp mask image" width="200" />
     </p>
 </p>
 
