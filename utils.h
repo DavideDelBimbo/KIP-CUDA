@@ -24,7 +24,7 @@
     * @param executionTime The execution time.
     * @param iterations The number of iterations.
 */ 
-inline void save_results(const std::string& base_path, std::string& execution_type, int image_width, int image_height, int image_channels, int image_is_SoA, int kernel_width, int kernel_height, double copy_time, double execution_time, double total_time, int iterations) {
+inline void save_results(const std::string& base_path, std::string& execution_type, int image_width, int image_height, int image_channels, int image_is_SoA, int kernel_width, int kernel_height, float execution_time, int iterations) {
     struct stat buffer;
     std::ofstream outfile;
 
@@ -40,12 +40,12 @@ inline void save_results(const std::string& base_path, std::string& execution_ty
     } else {
         // File doesn't exist, create new one with header
         outfile.open(base_path + "results.txt");
-        outfile << "execution_type,image_width,image_height,image_channels,image_architecture,kernel_width,kernel_height,copy_time,execution_time,total_time,iterations" << std::endl;
+        outfile << "execution_type,image_width,image_height,image_channels,image_architecture,kernel_width,kernel_height,execution_time,iterations" << std::endl;
         
     }
 
     // Save the results.
-    outfile << execution_type << "," << image_width << "," << image_height << "," << image_channels << "," << (image_is_SoA ? "SoA" : "AoS") << "," << kernel_width << "," << kernel_height << "," << copy_time << "," << execution_time << "," << total_time << "," << iterations << std::endl;
+    outfile << execution_type << "," << image_width << "," << image_height << "," << image_channels << "," << (image_is_SoA ? "SoA" : "AoS") << "," << kernel_width << "," << kernel_height << "," << execution_time << "," << iterations << std::endl;
     outfile.close();
 }
 

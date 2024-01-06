@@ -152,46 +152,50 @@ __global__ void convolution_kernel_shared(uint8_t* d_input, uint8_t* d_output,
 	extern __shared__ uint8_t s_data[];
 
     // Shared memory dimensions.
-    const int s_width = blockDim.x + (kernel_width - 1); // Shared memory width.
-    const int s_height = blockDim.y + (kernel_height - 1); // Shared memory height.
+    const int s_width = TILE_WIDTH + (kernel_width - 1); // Shared memory width.
+    const int s_height = TILE_WIDTH + (kernel_height - 1); // Shared memory height.
 
     // Padded image dimensions.
     const int padded_width = width + (2 * padding_width); // Padded image width.
     const int padded_height = height + (2 * padding_height); // Padded image height.
 
-    
+    // Number of entire batches to load the input image tile into shared memory.
+    const int num_entire_batches = floor((float)s_width * s_height / (TILE_WIDTH * TILE_WIDTH)); // Number of entire batches.
+
     for(int channel = 0; channel < channels; channel++) {
-        /*Loading first (blockDim.x * blockDim.y) elements into shared memory.*/
+        for(int i = 0; i < num_entire_batches; i++) {
+            /*Loading firsts (TILE_WIDTH * TILE_WIDTH) elements into shared memory.*/
+
+            // Shared memory index.
+            int s_index = threadIdx.y * TILE_WIDTH + threadIdx.x + i * (TILE_WIDTH * TILE_WIDTH); // Shared memory index.
+            int s_x = s_index % s_width; // Shared memory column index.
+            int s_y = s_index / s_width; // Shared memory row index.
+
+            // Global memory index to load the input image tile.
+            int x = blockIdx.x * TILE_WIDTH + s_x - floor((float) kernel_width / 2) + padding_width; // Global memory column index.
+            int y = blockIdx.y * TILE_WIDTH + s_y - floor((float) kernel_height / 2) + padding_width; // Global memory row index.
+
+            // Check if the thread is within the image bounds.
+            if(x >= 0 && x < padded_width && y >= 0 && y < padded_height) {
+                // Load the pixel value into shared memory.
+                s_data[s_index] = get_pixel_value(d_input, x, y, channel, padded_width, padded_height, channels, is_SoA);
+            } else {
+                // Load 0 into shared memory.
+                s_data[s_index] = 0;
+            }
+        }
+    
+    
+        /*Loading last (s_width * s_height) - (TILE_WIDTH * TILE_WIDTH) elements into shared memory.*/
 
         // Shared memory index.
-        int s_index = (threadIdx.y * blockDim.x) + threadIdx.x; // Shared memory index.
+        int s_index = (threadIdx.y * TILE_WIDTH) + threadIdx.x + num_entire_batches * (TILE_WIDTH * TILE_WIDTH); // Shared memory index.
         int s_x = s_index % s_width; // Shared memory column index.
         int s_y = s_index / s_width; // Shared memory row index.
 
         // Global memory index to load the input image tile.
-        int x = (blockIdx.x * blockDim.x) + s_x - floor((float) kernel_width / 2) + padding_width; // Global memory column index.
-        int y = (blockIdx.y * blockDim.y) + s_y - floor((float) kernel_height / 2) + padding_width; // Global memory row index.
-
-        // Check if the thread is within the image bounds.
-        if(x >= 0 && x < padded_width && y >= 0 && y < padded_height) {
-            // Load the pixel value into shared memory.
-            s_data[s_index] = get_pixel_value(d_input, x, y, channel, padded_width, padded_height, channels, is_SoA);
-        } else {
-            // Load 0 into shared memory.
-            s_data[s_index] = 0;
-        }
-    
-    
-        /*Loading last (s_width * s_height) - (blockDim.x * blockDim.y) elements into shared memory.*/
-
-        // Shared memory index.
-        s_index = (threadIdx.y * blockDim.x) + threadIdx.x + (blockDim.x * blockDim.y); // Shared memory index.
-        s_x = s_index % s_width; // Shared memory column index.
-        s_y = s_index / s_width; // Shared memory row index.
-
-        // Global memory index to load the input image tile.
-        x = (blockIdx.x * blockDim.x) + s_x - floor((float) kernel_width / 2) + padding_width; // Global memory column index.
-        y = (blockIdx.y * blockDim.y) + s_y - floor((float) kernel_height / 2) + padding_height; // Global memory row index.
+        int x = (blockIdx.x * TILE_WIDTH) + s_x - floor((float) kernel_width / 2) + padding_width; // Global memory column index.
+        int y = (blockIdx.y * TILE_WIDTH) + s_y - floor((float) kernel_height / 2) + padding_height; // Global memory row index.
 
         // Check if the thread is within the image bounds.
         if(s_y < s_height) {
@@ -227,8 +231,8 @@ __global__ void convolution_kernel_shared(uint8_t* d_input, uint8_t* d_output,
 
 
         // Calculate the global index in the output image.
-        x = blockIdx.x * blockDim.x + threadIdx.x;
-        y = blockIdx.y * blockDim.y + threadIdx.y;
+        x = blockIdx.x * TILE_WIDTH + threadIdx.x;
+        y = blockIdx.y * TILE_WIDTH + threadIdx.y;
 
         // Store the output value in global memory.
         if (x < width && y < height) {
@@ -243,7 +247,7 @@ __global__ void convolution_kernel_shared(uint8_t* d_input, uint8_t* d_output,
 
 // Methods.
 
-Image Parallel::Convolution::convolve_global(const Image& image, const Kernel& kernel, PaddingType padding_type, std::string results_path) {
+Image Parallel::Convolution::convolve_global(const Image& image, const Kernel& kernel, const PaddingType padding_type, const std::string results_path) {
     // Input image dimensions.
     const int width = image.get_width(); // Input image width.
     const int height = image.get_height(); // Input image height.
@@ -282,107 +286,92 @@ Image Parallel::Convolution::convolve_global(const Image& image, const Kernel& k
     float* d_kernel; // Kernel data.
 
 
-    // Copy time.
-    double copy_time = 0;
+    // Allocate device memory.
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_kernel, kernel_size));
+
+
+    // Specify block and grid dimensions.
+    dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
+
 
     // Execution time.
-    double execution_time = 0;
+    float execution_time = 0;
 
     // Print the execution information.
     if (VERBOSITY >= 1) std::cout << "Starting parallel convolution with global memory..." << std::endl;
     
     for (int i = 0; i < ITERATIONS; ++i) {
-        // Allocate device memory.
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_kernel, kernel_size));
+        // CUDA events for measuring execution time.
+        cudaEvent_t start, stop;
+        CUDA_CHECK_RETURN(cudaEventCreate(&start));
+        CUDA_CHECK_RETURN(cudaEventCreate(&stop));
 
-
-        // Start copy time.
-        auto start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy data from host to device global memory.
         CUDA_CHECK_RETURN(cudaMemcpy(d_input, h_input, input_size, cudaMemcpyHostToDevice));
         CUDA_CHECK_RETURN(cudaMemcpy(d_kernel, h_kernel, kernel_size, cudaMemcpyHostToDevice));
 
-        // End copy time.
-        auto end_copy_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the copy time.
-        double iteration_copy_time = std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
-
-
-        // Specify block and grid dimensions.
-        dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
-        dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
-
 
         // Start iteration execution time.
-        auto start_execution_time = std::chrono::high_resolution_clock::now();
         if (VERBOSITY >= 2) std::cout << "\tIteration: " << i;
+        CUDA_CHECK_RETURN(cudaEventRecord(start));
 
         // Launch kernel.
         convolution_kernel_global<<<gridDim, blockDim>>>(d_input, d_kernel, d_output, width, height, channels, kernel_width, kernel_height, padding_width, padding_height, image.get_is_SoA());
+        
+        // End iteration execution time.
+        CUDA_CHECK_RETURN(cudaEventRecord(stop));
 
-        // Waits for threads to finish work.
+
+        // Wait for the kernel to finish execution.
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
-        // End iteration execution time.
-        auto end_execution_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the iteration execution time.
-        double iteration_execution_time = std::chrono::duration<double, std::milli>(end_execution_time - start_execution_time).count();
-        execution_time += iteration_execution_time;
-
-
-        // Start copy time.
-        start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy output data from device global memory to host memory.
         CUDA_CHECK_RETURN(cudaMemcpy(h_output, d_output, output_size, cudaMemcpyDeviceToHost));
 
-        // End copy time.
-        end_copy_time = std::chrono::high_resolution_clock::now();
 
-        // Measure the copy time.
-        iteration_copy_time += std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
+        // Wait for the kernel to finish execution.
+        CUDA_CHECK_RETURN(cudaEventSynchronize(stop)); 
+
+        // Measure the iteration execution time.
+        float iteration_execution_time = 0;
+        CUDA_CHECK_RETURN(cudaEventElapsedTime(&iteration_execution_time, start, stop));
+        execution_time += iteration_execution_time;
 
 
-        // Clean up device memory after kernel execution.
-        CUDA_CHECK_RETURN(cudaFree(d_input));
-        CUDA_CHECK_RETURN(cudaFree(d_output));
-        CUDA_CHECK_RETURN(cudaFree(d_kernel));
+        // Destroy the CUDA events.
+        CUDA_CHECK_RETURN(cudaEventDestroy(start));
+        CUDA_CHECK_RETURN(cudaEventDestroy(stop));
 
 
         // Print the iteration execution time.
-        if (VERBOSITY >= 2) std::cout << " - Transfer data (from/to): " << iteration_copy_time << " ms - Execution: " << iteration_execution_time << " ms" << std::endl;
+        if (VERBOSITY >= 2) std::cout << " - Execution: " << iteration_execution_time << " ms" << std::endl;
     }
 
+    // Clean up device memory after kernel execution.
+    CUDA_CHECK_RETURN(cudaFree(d_input));
+    CUDA_CHECK_RETURN(cudaFree(d_output));
+    CUDA_CHECK_RETURN(cudaFree(d_kernel));
 
-    // Print the copy time.
-    if (VERBOSITY >= 1) std::cout << "Copy time: " << copy_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
     // Print the execution time.
     if (VERBOSITY >= 1) std::cout << "Execution time with global memory: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
-    // Print the total time.
-    double total_time = copy_time + execution_time;
-    if (VERBOSITY >= 1) std::cout << "Total time: " << total_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
-
     // Save the results.
     if (!results_path.empty()) {
         std::string execution_type = "global";
-        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, copy_time / ITERATIONS, execution_time / ITERATIONS, total_time / ITERATIONS, ITERATIONS);
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, execution_time / ITERATIONS, ITERATIONS);
     }
-
 
     // Create the output image.
     return Image(width, height, channels, h_output, image.get_is_SoA());
 }
 
-Image Parallel::Convolution::convolve_constant(const Image &image, const Kernel &kernel, PaddingType padding_type, std::string results_path) {
+Image Parallel::Convolution::convolve_constant(const Image &image, const Kernel &kernel, const PaddingType padding_type, const std::string results_path) {
     // Input image dimensions.
     const int width = image.get_width(); // Input image width.
     const int height = image.get_height(); // Input image height.
@@ -420,23 +409,28 @@ Image Parallel::Convolution::convolve_constant(const Image &image, const Kernel 
     uint8_t* d_output; // Output image data.
 
 
-    // Copy time.
-    double copy_time = 0;
+    // Allocate device memory.
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+
+
+    // Specify block and grid dimensions.
+    dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
+
 
     // Execution time.
-    double execution_time = 0;
+    float execution_time = 0;
 
     // Print the execution information.
     if (VERBOSITY >= 1) std::cout << "Starting parallel convolution with constant memory..." << std::endl;
     
     for (int i = 0; i < ITERATIONS; ++i) {
-        // Allocate device memory.
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+        // CUDA events for measuring execution time.
+        cudaEvent_t start, stop;
+        CUDA_CHECK_RETURN(cudaEventCreate(&start));
+        CUDA_CHECK_RETURN(cudaEventCreate(&stop));
 
-
-        // Start copy time.
-        auto start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy input data from host to device global memory.
         CUDA_CHECK_RETURN(cudaMemcpy(d_input, h_input, input_size, cudaMemcpyHostToDevice));
@@ -444,83 +438,63 @@ Image Parallel::Convolution::convolve_constant(const Image &image, const Kernel 
         // Copy kernel data from host to device constant memory.
         CUDA_CHECK_RETURN(cudaMemcpyToSymbol(c_kernel, h_kernel, kernel_size, 0, cudaMemcpyHostToDevice));
 
-        // End copy time.
-        auto end_copy_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the copy time.
-        double iteration_copy_time = std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
-
-
-        // Specify block and grid dimensions.
-        dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
-        dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
-
 
         // Start iteration execution time.
-        auto start_execution_time = std::chrono::high_resolution_clock::now();
         if (VERBOSITY >= 2) std::cout << "\tIteration: " << i;
+        CUDA_CHECK_RETURN(cudaEventRecord(start));
 
         // Launch kernel.
         convolution_kernel_constant<<<gridDim, blockDim>>>(d_input, d_output, width, height, channels, kernel_width, kernel_height, padding_width, padding_height, image.get_is_SoA());
-
-        // Waits for threads to finish work.
-        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
-
+        
         // End iteration execution time.
-        auto end_execution_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the iteration execution time.
-        double iteration_execution_time = std::chrono::duration<double, std::milli>(end_execution_time - start_execution_time).count();
-        execution_time += iteration_execution_time;
+        CUDA_CHECK_RETURN(cudaEventRecord(stop));
 
 
-        // Start copy time.
-        start_copy_time = std::chrono::high_resolution_clock::now();
+        // Wait for the kernel to finish execution.
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
+        
 
         // Copy output data from device global memory to host memory.
         CUDA_CHECK_RETURN(cudaMemcpy(h_output, d_output, output_size, cudaMemcpyDeviceToHost));
 
-        // End copy time.
-        end_copy_time = std::chrono::high_resolution_clock::now();
 
-        // Measure the copy time.
-        iteration_copy_time += std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
+        // Wait for the kernel to finish execution.
+        CUDA_CHECK_RETURN(cudaEventSynchronize(stop)); 
+
+        // Measure the iteration execution time.
+        float iteration_execution_time = 0;
+        CUDA_CHECK_RETURN(cudaEventElapsedTime(&iteration_execution_time, start, stop));
+        execution_time += iteration_execution_time;
 
 
-        // Clean up device memory after kernel execution.
-        CUDA_CHECK_RETURN(cudaFree(d_input));
-        CUDA_CHECK_RETURN(cudaFree(d_output));
+        // Destroy the CUDA events.
+        CUDA_CHECK_RETURN(cudaEventDestroy(start));
+        CUDA_CHECK_RETURN(cudaEventDestroy(stop));
 
 
         // Print the iteration execution time.
-        if (VERBOSITY >= 2) std::cout << " - Transfer data (from/to): " << iteration_copy_time << " ms - Execution: " << iteration_execution_time << " ms" << std::endl;
+        if (VERBOSITY >= 2) std::cout << " - Execution: " << iteration_execution_time << " ms" << std::endl;
     }
 
+    // Clean up device memory after kernel execution.
+    CUDA_CHECK_RETURN(cudaFree(d_input));
+    CUDA_CHECK_RETURN(cudaFree(d_output));
 
-    // Print the copy time.
-    if (VERBOSITY >= 1) std::cout << "Copy time: " << copy_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
     // Print the execution time.
     if (VERBOSITY >= 1) std::cout << "Execution time with constant memory: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
-    // Print the total time.
-    double total_time = copy_time + execution_time;
-    if (VERBOSITY >= 1) std::cout << "Total time: " << total_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
-
     // Save the results.
     if (!results_path.empty()) {
         std::string execution_type = "constant";
-        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, copy_time / ITERATIONS, execution_time / ITERATIONS, total_time / ITERATIONS, ITERATIONS);
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, execution_time / ITERATIONS, ITERATIONS);
     }
-
 
     // Create the output image.
     return Image(width, height, channels, h_output, image.get_is_SoA());
 }
 
-Image Parallel::Convolution::convolve_shared(const Image &image, const Kernel &kernel, PaddingType padding_type, std::string results_path) {
+Image Parallel::Convolution::convolve_shared(const Image &image, const Kernel &kernel, const PaddingType padding_type, const std::string results_path) {
     // Input image dimensions.
     const int width = image.get_width(); // Input image width.
     const int height = image.get_height(); // Input image height.
@@ -559,23 +533,28 @@ Image Parallel::Convolution::convolve_shared(const Image &image, const Kernel &k
     uint8_t* d_output; // Output image data.
 
 
-    // Copy time.
-    double copy_time = 0;
+    // Allocate device memory.
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+
+
+    // Specify block and grid dimensions.
+    dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
+
 
     // Execution time.
-    double execution_time = 0;
+    float execution_time = 0;
 
     // Print the execution information.
     if (VERBOSITY >= 1) std::cout << "Starting parallel convolution with shared memory..." << std::endl;
     
     for (int i = 0; i < ITERATIONS; ++i) {
-        // Allocate device memory.
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+        // CUDA events for measuring execution time.
+        cudaEvent_t start, stop;
+        CUDA_CHECK_RETURN(cudaEventCreate(&start));
+        CUDA_CHECK_RETURN(cudaEventCreate(&stop));
 
-
-        // Start copy time.
-        auto start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy input data from host to device global memory.
         CUDA_CHECK_RETURN(cudaMemcpy(d_input, h_input, input_size, cudaMemcpyHostToDevice));
@@ -583,83 +562,63 @@ Image Parallel::Convolution::convolve_shared(const Image &image, const Kernel &k
         // Copy kernel data from host to device constant memory.
         CUDA_CHECK_RETURN(cudaMemcpyToSymbol(c_kernel, h_kernel, kernel_size, 0, cudaMemcpyHostToDevice));
 
-        // End copy time.
-        auto end_copy_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the copy time.
-        double iteration_copy_time = std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
-
-
-        // Specify block and grid dimensions.
-        dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
-        dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
-
 
         // Start iteration execution time.
-        auto start_execution_time = std::chrono::high_resolution_clock::now();
         if (VERBOSITY >= 2) std::cout << "\tIteration: " << i;
+        CUDA_CHECK_RETURN(cudaEventRecord(start));
 
         // Launch kernel.
         convolution_kernel_shared<<<gridDim, blockDim, shared_size>>>(d_input, d_output, width, height, channels, kernel_width, kernel_height, padding_width, padding_height, image.get_is_SoA());
 
-        // Waits for threads to finish work.
+        // End iteration execution time.
+        CUDA_CHECK_RETURN(cudaEventRecord(stop));
+
+
+        // Wait for the kernel to finish execution.
         CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
-        // End iteration execution time.
-        auto end_execution_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the iteration execution time.
-        double iteration_execution_time = std::chrono::duration<double, std::milli>(end_execution_time - start_execution_time).count();
-        execution_time += iteration_execution_time;
-
-
-        // Start copy time.
-        start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy output data from device global memory to host memory.
         CUDA_CHECK_RETURN(cudaMemcpy(h_output, d_output, output_size, cudaMemcpyDeviceToHost));
 
-        // End copy time.
-        end_copy_time = std::chrono::high_resolution_clock::now();
 
-        // Measure the copy time.
-        iteration_copy_time += std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
+        // Wait for the kernel to finish execution.
+        CUDA_CHECK_RETURN(cudaEventSynchronize(stop));
+
+        // Measure the iteration execution time.
+        float iteration_execution_time = 0;
+        CUDA_CHECK_RETURN(cudaEventElapsedTime(&iteration_execution_time, start, stop));
+        execution_time += iteration_execution_time;
 
 
-        // Clean up device memory after kernel execution.
-        CUDA_CHECK_RETURN(cudaFree(d_input));
-        CUDA_CHECK_RETURN(cudaFree(d_output));
+        // Destroy the CUDA events.
+        CUDA_CHECK_RETURN(cudaEventDestroy(start));
+        CUDA_CHECK_RETURN(cudaEventDestroy(stop));
 
 
         // Print the iteration execution time.
-        if (VERBOSITY >= 2) std::cout << " - Transfer data (from/to): " << iteration_copy_time << " ms - Execution: " << iteration_execution_time << " ms" << std::endl;
+        if (VERBOSITY >= 2) std::cout << " - Execution: " << iteration_execution_time << " ms" << std::endl;
     }
 
+    // Clean up device memory after kernel execution.
+    CUDA_CHECK_RETURN(cudaFree(d_input));
+    CUDA_CHECK_RETURN(cudaFree(d_output));
 
-    // Print the copy time.
-    if (VERBOSITY >= 1) std::cout << "Copy time: " << copy_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
     // Print the execution time.
     if (VERBOSITY >= 1) std::cout << "Execution time with shared memory: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
-    // Print the total time.
-    double total_time = copy_time + execution_time;
-    if (VERBOSITY >= 1) std::cout << "Total time: " << total_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
-
     // Save the results.
     if (!results_path.empty()) {
         std::string execution_type = "shared";
-        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, copy_time / ITERATIONS, execution_time / ITERATIONS, total_time / ITERATIONS, ITERATIONS);
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, execution_time / ITERATIONS, ITERATIONS);
     }
-
 
     // Create the output image.
     return Image(width, height, channels, h_output, image.get_is_SoA());
 }
 
-Image Parallel::Convolution::convolve_pinned(const Image &image, const Kernel &kernel, PaddingType padding_type, std::string results_path) {
+Image Parallel::Convolution::convolve_pinned(const Image &image, const Kernel &kernel, const PaddingType padding_type, const std::string results_path, const int stream_count) {
     // Input image dimensions.
     const int width = image.get_width(); // Input image width.
     const int height = image.get_height(); // Input image height.
@@ -702,126 +661,122 @@ Image Parallel::Convolution::convolve_pinned(const Image &image, const Kernel &k
     uint8_t* d_output; // Output image data.
 
 
-    // Copy time.
-    double copy_time = 0;
+    // Allocate pinned host memory.
+    CUDA_CHECK_RETURN(cudaMallocHost((void**)&h_pinned_input, input_size));
+    CUDA_CHECK_RETURN(cudaMallocHost((void**)&h_pinned_output, output_size));
+
+    // Allocate device memory.
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
+    CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
+
+
+    // Specify block and grid dimensions.
+    dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
+
 
     // Execution time.
-    double execution_time = 0;
+    float execution_time = 0;
 
     // Print the execution information.
     if (VERBOSITY >= 1) std::cout << "Starting parallel convolution with pinned memory..." << std::endl;
     
     for (int i = 0; i < ITERATIONS; ++i) {
-        // Create a CUDA stream for asynchronous memory transfers.
-        cudaStream_t stream;
-        CUDA_CHECK_RETURN(cudaStreamCreate(&stream));
+        // CUDA events for measuring execution time.
+        cudaEvent_t start, stop;
+        CUDA_CHECK_RETURN(cudaEventCreate(&start));
+        CUDA_CHECK_RETURN(cudaEventCreate(&stop));
 
 
-        // Allocate pinned host memory.
-        CUDA_CHECK_RETURN(cudaMallocHost((void**)&h_pinned_input, input_size));
-        CUDA_CHECK_RETURN(cudaMallocHost((void**)&h_pinned_output, output_size));
+        // Create CUDA streams for asynchronous memory transfers.
+        cudaStream_t* streams = new cudaStream_t[stream_count];
+        for (int n = 0; n < stream_count; n++) {
+            CUDA_CHECK_RETURN(cudaStreamCreate(&streams[n]));
+        }
 
-        // Allocate device memory.
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_input, input_size));
-        CUDA_CHECK_RETURN(cudaMalloc((void**)&d_output, output_size));
-
-
-        // Start copy time.
-        auto start_copy_time = std::chrono::high_resolution_clock::now();
-
-        // Copy kernel data from host to device constant memory.
-        CUDA_CHECK_RETURN(cudaMemcpyToSymbolAsync(c_kernel, h_kernel, kernel_size, 0, cudaMemcpyHostToDevice, stream));
 
         // Copy input data from pageable host memory to pinned host memory.
         CUDA_CHECK_RETURN(cudaMemcpy(h_pinned_input, h_input, input_size, cudaMemcpyHostToHost));
 
-        // End copy time.
-        auto end_copy_time = std::chrono::high_resolution_clock::now();
+        // Copy kernel data from host to device constant memory.
+        CUDA_CHECK_RETURN(cudaMemcpyToSymbolAsync(c_kernel, h_kernel, kernel_size, 0, cudaMemcpyHostToDevice));
 
-        // Measure the copy time.
-        double iteration_copy_time = std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
-
-
-        // Specify block and grid dimensions.
-        dim3 blockDim(TILE_WIDTH, TILE_WIDTH); // Threads per block.
-        dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y); // Blocks per grid.
-
-
+        
         // Start iteration execution time.
-        auto start_execution_time = std::chrono::high_resolution_clock::now();
         if (VERBOSITY >= 2) std::cout << "\tIteration: " << i;
+        CUDA_CHECK_RETURN(cudaEventRecord(start));
 
-        // Copy input data from pinned host memory to device global memory asynchronously.
-        CUDA_CHECK_RETURN(cudaMemcpyAsync(d_input, h_pinned_input, input_size, cudaMemcpyHostToDevice, stream));
+        for (int n = 0; n < stream_count; n++)  {
+            // Calculate the stream sizes.
+            int input_stream_size = input_size / stream_count; // Input stream size.
+            int input_offset = n * input_stream_size; // Offset for the input stream.
 
-        // Launch kernel.
-        convolution_kernel_shared<<<gridDim, blockDim, shared_size, stream>>>(d_input, d_output, width, height, channels, kernel_width, kernel_height, padding_width, padding_height, image.get_is_SoA());
+            // Copy input data from pinned host memory to device global memory asynchronously.
+            CUDA_CHECK_RETURN(cudaMemcpyAsync(d_input + input_offset, h_pinned_input + input_offset, input_stream_size, cudaMemcpyHostToDevice, streams[n]));
 
-        // Copy output data from device global memory to pinned host memory asynchronously.
-        CUDA_CHECK_RETURN(cudaMemcpyAsync(h_pinned_output, d_output, output_size, cudaMemcpyDeviceToHost, stream));
+            // Launch kernel.
+            convolution_kernel_shared<<<gridDim, blockDim, shared_size, streams[n]>>>(d_input + input_offset, d_output, width, height, channels, kernel_width, kernel_height, padding_width, padding_height, image.get_is_SoA());
+
+            // Copy output data from device global memory to pinned host memory asynchronously.
+            CUDA_CHECK_RETURN(cudaMemcpyAsync(h_pinned_output, d_output, output_size, cudaMemcpyDeviceToHost, streams[n]));
+        }
         
         // End iteration execution time.
-        auto end_execution_time = std::chrono::high_resolution_clock::now();
-
-        // Measure the iteration execution time.
-        double iteration_execution_time = std::chrono::duration<double, std::milli>(end_execution_time - start_execution_time).count();
-        execution_time += iteration_execution_time;
+        CUDA_CHECK_RETURN(cudaEventRecord(stop));
 
 
         // Waits for streams to finish work.
-        CUDA_CHECK_RETURN(cudaStreamSynchronize(stream));
+        CUDA_CHECK_RETURN(cudaStreamSynchronize(streams[0]));
 
-
-        // Start copy time (from pinned host memory to pageable host memory).
-        start_copy_time = std::chrono::high_resolution_clock::now();
 
         // Copy output data from pinned host memory to pageable host memory.
         CUDA_CHECK_RETURN(cudaMemcpy(h_output, h_pinned_output, output_size, cudaMemcpyHostToHost));
 
-        // End copy time (from pinned host memory to pageable host memory).
-        end_copy_time = std::chrono::high_resolution_clock::now();
 
-        // Measure the copy time (from pinned host memory to pageable host memory).
-        iteration_copy_time += std::chrono::duration<double, std::milli>(end_copy_time - start_copy_time).count();
-        copy_time += iteration_copy_time;
+        // Wait for the kernel to finish execution.
+        CUDA_CHECK_RETURN(cudaEventSynchronize(stop));
 
-
-        // Destroy the CUDA stream.
-        cudaStreamDestroy(stream);
+        // Measure the iteration execution time.
+        float iteration_execution_time = 0;
+        CUDA_CHECK_RETURN(cudaEventElapsedTime(&iteration_execution_time, start, stop));
+        execution_time += iteration_execution_time;
 
 
-        // Clean up pinned host memory.
-        CUDA_CHECK_RETURN(cudaFreeHost(h_pinned_input));
-        CUDA_CHECK_RETURN(cudaFreeHost(h_pinned_output));
+        // Destroy the CUDA streams.
+        for (int n = 0; n < stream_count; n++) {
+            CUDA_CHECK_RETURN(cudaStreamDestroy(streams[n]));
+        }
+        
+        // Deallocate the array of streams.
+        delete[] streams;
 
-        // Clean up device memory after kernel execution.
-        CUDA_CHECK_RETURN(cudaFree(d_input));
-        CUDA_CHECK_RETURN(cudaFree(d_output));
+        // Destroy the CUDA events.
+        CUDA_CHECK_RETURN(cudaEventDestroy(start));
+        CUDA_CHECK_RETURN(cudaEventDestroy(stop));
 
 
         // Print the iteration execution time.
-        if (VERBOSITY >= 2) std::cout << " - Transfer data (from/to): " << iteration_copy_time << " ms - Execution: " << iteration_execution_time << " ms" << std::endl;
+        if (VERBOSITY >= 2) std::cout << " - Execution: " << iteration_execution_time << " ms" << std::endl;
     }
 
+    // Clean up pinned host memory.
+    CUDA_CHECK_RETURN(cudaFreeHost(h_pinned_input));
+    CUDA_CHECK_RETURN(cudaFreeHost(h_pinned_output));
 
-    // Print the copy time.
-    if (VERBOSITY >= 1) std::cout << "Copy time with pinned memory: " << copy_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
+    // Clean up device memory after kernel execution.
+    CUDA_CHECK_RETURN(cudaFree(d_input));
+    CUDA_CHECK_RETURN(cudaFree(d_output));
+
 
     // Print the execution time.
-    if (VERBOSITY >= 1) std::cout << "Execution time with shared memory: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
-
-    // Print the total time.
-    double total_time = copy_time + execution_time;
-    if (VERBOSITY >= 1) std::cout << "Total time: " << total_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
+    if (VERBOSITY >= 1) std::cout << "Execution time with pinned memory: " << execution_time / ITERATIONS << " ms (average of " << ITERATIONS << " runs)" << std::endl;
 
     // Save the results.
     if (!results_path.empty()) {
         std::string execution_type = "pinned";
-        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, copy_time / ITERATIONS, execution_time / ITERATIONS, total_time / ITERATIONS, ITERATIONS);
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, execution_time / ITERATIONS, ITERATIONS);
     }
-
-
+    
     // Create the output image.
     return Image(width, height, channels, h_output, image.get_is_SoA());
 }

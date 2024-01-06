@@ -32,13 +32,13 @@ void printHelp() {
     std::cout << "  --image_path, -I: Path to the input image file." << std::endl;
     std::cout << "  --SoA, -S: Use Structure of Arrays (SoA) data layout." << std::endl;
     std::cout << "  --padding_type, -P: Padding type ('zero', 'replicate' or 'mirror')." << std::endl;
-    std::cout << "  --kernel, -K: Kernel type ('box_blur', 'gaussian_blur', 'sharpen', 'edge_detection', 'unsharpen_mask', 'emboss or 'custom')." << std::endl;
+    std::cout << "  --kernel, -K: Kernel type ('box_blur', 'gaussian_blur', 'sharpen', 'edge_detection', 'unsharpen_mask', 'emboss' or 'custom')." << std::endl;
     std::cout << "  --kernel_size, -Z: Size of the custom kernel (required 'custom' kernel)." << std::endl;
     std::cout << "  --kernel_data, -D: Data of the custom kernel (required 'custom' kernel with specific 'kernel_size')." << std::endl;
     std::cout << "  --kernel_normalization, -N: Normalization of the custom kernel (required 'custom' kernel)." << std::endl;
     std::cout << "  --execution_type, -E: Execution type ('parallel' or 'sequential')." << std::endl;
     std::cout << "  --memory_type, -M: Memory management type ('global', 'constant', 'shared' or 'pinned')." << std::endl;
-    std::cout << "  --output_path, -O: Path to the output image file (default: './images/)." << std::endl;
+    std::cout << "  --output_path, -O: Path to the output image file." << std::endl;
     std::cout << "  --results_path, -R: Base path for the results (default: './results/')." << std::endl;
 }
 
@@ -257,7 +257,7 @@ void runConvolution(const Image& image, const Kernel& kernel) {
             }
         } else {
             // Run the pinned memory convolution.
-            Image result = Parallel::Convolution::convolve_pinned(image, kernel, PADDING_TYPE, RESULTS_PATH);
+            Image result = Parallel::Convolution::convolve_pinned(image, kernel, PADDING_TYPE, RESULTS_PATH, 3);
 
             // Save the convolved image.
             if (!OUTPUT_PATH.empty()) {

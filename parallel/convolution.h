@@ -18,7 +18,7 @@ namespace Parallel {
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_global(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
+            static Image convolve_global(const Image& image, const Kernel& kernel, const PaddingType padding_type = PaddingType::ZERO, const std::string results_path = "");
     
             /*
                 * Applies convolution to an image using a kernel in constant memory.
@@ -30,7 +30,7 @@ namespace Parallel {
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_constant(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
+            static Image convolve_constant(const Image& image, const Kernel& kernel, const PaddingType padding_type = PaddingType::ZERO, const std::string results_path = "");
     
             /*
                 * Applies convolution to an image using a kernel in shared memory.
@@ -42,7 +42,7 @@ namespace Parallel {
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_shared(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
+            static Image convolve_shared(const Image& image, const Kernel& kernel, const PaddingType padding_type = PaddingType::ZERO, const std::string results_path = "");
 
             /*
                 * Applies convolution to an image using a kernel in shared memory and pinned memory.
@@ -51,10 +51,11 @@ namespace Parallel {
                 * @param kernel The kernel to be applied.
                 * @param padding_type The type of padding to be applied.
                 * @param results_path The path to save the results.
+                * @param stream_count The number of streams to be used.
                 * 
                 * @return The convolved image.
             */
-            static Image convolve_pinned(const Image& image, const Kernel& kernel, PaddingType padding_type = PaddingType::ZERO, std::string results_path = "");
+            static Image convolve_pinned(const Image& image, const Kernel& kernel, const PaddingType padding_type = PaddingType::ZERO, const std::string results_path = "", const int stream_count = 1);
     };
 }
 

@@ -36,7 +36,7 @@ Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel
     if (VERBOSITY >= 1) std::cout << "Starting sequential convolution..." << std::endl;
 
     // Execution time.
-    double execution_time = 0;
+    float execution_time = 0;
     for (int i = 0; i < ITERATIONS; i++) {
         // Start iteration execution time.
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -49,7 +49,7 @@ Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel
         auto end_time = std::chrono::high_resolution_clock::now();
 
         // Measure the iteration execution time.
-        double iteration_execution_time = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        float iteration_execution_time = std::chrono::duration<float, std::milli>(end_time - start_time).count();
         execution_time += iteration_execution_time;
 
         // Print the iteration execution time.
@@ -63,7 +63,7 @@ Image Sequential::Convolution::convolve(const Image& image, const Kernel& kernel
     // Save the results.
     if (!results_path.empty()) {
         std::string execution_type = "sequential";
-        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, 0, execution_time / ITERATIONS, execution_time / ITERATIONS, ITERATIONS);
+        save_results(results_path, execution_type, width, height, channels, image.get_is_SoA(), kernel_width, kernel_height, execution_time / ITERATIONS, ITERATIONS);
     }
 
 
